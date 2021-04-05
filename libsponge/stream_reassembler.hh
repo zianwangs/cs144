@@ -5,7 +5,8 @@
 
 #include <cstdint>
 #include <string>
-
+#include <map>
+#define PIS std::pair<int, std::string>
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
 //! possibly overlapping) into an in-order byte stream.
 class StreamReassembler {
@@ -13,8 +14,12 @@ class StreamReassembler {
     // Your code here -- add private members as necessary.
 
     ByteStream _output;  //!< The reassembled in-order byte stream
-    size_t _capacity;    //!< The maximum number of bytes
-
+    size_t size = 0;    //!< The maximum number of bytes
+    size_t max;
+    size_t ackno = 0;
+    size_t last_ackno = 0;
+    bool eof_occurred = false;
+    std::map<size_t, std::string> m{};
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
     //! \note This capacity limits both the bytes that have been reassembled,

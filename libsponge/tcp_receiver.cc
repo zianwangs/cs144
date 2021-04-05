@@ -11,9 +11,31 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 using namespace std;
 
 void TCPReceiver::segment_received(const TCPSegment &seg) {
-    DUMMY_CODE(seg);
+    TCPHeader header = seg.header();
+    Buffer payload = seg.payload();
+    size_t len = seg.length_in_sequence_space();
+    if (!syn_received && header.syn) {
+        syn_received = true;
+        isn = header.seqno;
+    }
+    if (!syn_received) return;
+    size_t checkpoint = unwrap(ackno().value(), isn, stream_out().bytes_written());
+    size_t start_abs_idx = unwrap(header.seqno, isn, checkpoint);
+    if (checkpoint >= start_abs_idx + len) return;
+    size_t start_stream_idx = start_abs_idx;
+    if (!header.syn && syn_received) {
+        --start_stream_idx;
+    }
+    if (header.fin)
+        fin_received = true;
+    _reassembler.push_substring(payload.copy(), start_stream_idx, header.fin);
+
 }
 
-optional<WrappingInt32> TCPReceiver::ackno() const { return {}; }
+optional<WrappingInt32> TCPReceiver::ackno() const {
+    if (!syn_received)
+        return std::nullopt;
+    return wrap(stream_out().bytes_written() + syn_received + (fin_received & (unassembled_bytes() == 0)), isn);
+}
 
-size_t TCPReceiver::window_size() const { return {}; }
+size_t TCPReceiver::window_size() const { return _capacity - stream_out().buffer_size(); }

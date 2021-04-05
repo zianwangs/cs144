@@ -49,6 +49,7 @@ int main() {
 
             auto result = read(buf);
             if (buf.stream_out().bytes_written() != offset) {  // read bytes
+                printf("diff %ld %ld\n", buf.stream_out().bytes_written(), offset);
                 throw runtime_error("test 1 - number of bytes RX is incorrect");
             }
             if (!equal(result.cbegin(), result.cend(), d.cbegin())) {

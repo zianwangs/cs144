@@ -15,6 +15,26 @@
 //! segments, keeps track of which segments are still in-flight,
 //! maintains the Retransmission Timer, and retransmits in-flight
 //! segments if the retransmission timer expires.
+
+class Timer {
+private:
+    unsigned int t = 0;
+    bool running = false;
+    unsigned int limit = 0;
+public:
+    void start(unsigned int threshold) {
+        t = 0;
+        running = true;
+        limit = threshold;
+    }
+
+    bool isRunning() { return running; }
+    void elapse(unsigned int ticks) { t += ticks; }
+    bool isExpired() { return t >= limit; }
+    void stop() { running = false; };
+    unsigned int time() const { return t; }
+};
+
 class TCPSender {
   private:
     //! our initial sequence number, the number for our SYN.
@@ -22,6 +42,7 @@ class TCPSender {
 
     //! outbound queue of segments that the TCPSender wants sent
     std::queue<TCPSegment> _segments_out{};
+    std::queue<TCPSegment> q{};
 
     //! retransmission timer for the connection
     unsigned int _initial_retransmission_timeout;
@@ -30,7 +51,17 @@ class TCPSender {
     ByteStream _stream;
 
     //! the (absolute) sequence number for the next byte to be sent
-    uint64_t _next_seqno{0};
+    uint64_t _next_seqno = 0;
+    uint64_t _ackno = 0;
+    unsigned int consec = 0;
+    unsigned int cur_rto;
+    uint16_t win = 1;
+    uint16_t cur_window = 1;
+    Timer timer{};
+    bool syn_sent = false;
+    bool syn_acked = false;
+    bool fin_sent = false;
+    bool fin_acked = false;
 
   public:
     //! Initialize a TCPSender
