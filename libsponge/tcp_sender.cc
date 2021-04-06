@@ -3,7 +3,7 @@
 #include "tcp_config.hh"
 
 #include <random>
-
+#include <iostream>
 // Dummy implementation of a TCP sender
 
 // For Lab 3, please replace with a real implementation that passes the
@@ -26,62 +26,97 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 uint64_t TCPSender::bytes_in_flight() const { 
     return _next_seqno - _ackno; 
 }
-
 void TCPSender::fill_window() {
-    TCPSegment seg;
-    if (cur_window == 0) return;
+    if ((syn_sent && !stream_in().eof() && stream_in().buffer_size() == 0) || fin_sent)
+        return;
     if (!syn_sent) {
-        // string payload = stream_in().read(mymin(cur_window, 1452));
-        // seg.payload() = Buffer(move(payload));
+        TCPSegment seg;
         seg.header().syn = 1;
         syn_sent = true;
+        if (!timer.isRunning())
+            timer.start(cur_rto);
+        seg.header().seqno = next_seqno();
+        _next_seqno += 1;
+        cur_window -= 1;
+        _segments_out.push(seg);
+        q.push(seg);
         /*
-        if (cur_window > seg.length_in_sequence_space() && stream_in().eof()) {
-            seg.header().fin = 1;
-            fin_sent = true;
-        }
-        */
-    } else if (fin_sent) {
-        return;
-    } else if (!stream_in().eof() && stream_in().buffer_size() == 0) {
-        // send_empty_segment();
-        return;
     } else if (stream_in().eof() && !fin_sent) {
+        TCPSegment seg;
         seg.header().fin = 1;
         fin_sent = true;
+        if (!timer.isRunning())
+            timer.start(cur_rto);
+        seg.header().seqno = next_seqno();
+        _next_seqno += 1;
+        cur_window -= 1;
+        _segments_out.push(seg);
+        q.push(seg);
+        */
     } else {
-        string payload = move(stream_in().read(mymin(cur_window, 1452)));
-        seg.payload() = Buffer(move(payload));
-        if (cur_window > seg.length_in_sequence_space() && stream_in().eof()) {
-            seg.header().fin = 1;
-            fin_sent = true;
-        }
-
-    }
-    if (!timer.isRunning())
-        timer.start(cur_rto);
-    seg.header().seqno = next_seqno();
-    _next_seqno += seg.length_in_sequence_space();
-    cur_window -= seg.length_in_sequence_space();
-    _segments_out.push(seg);
-    q.push(seg);
-    fill_window();
+        if (win) {
+            while (cur_window) {
+                TCPSegment seg;
+                size_t size = mymin(stream_in().buffer_size(), mymin(cur_window, 1452));
+                seg.payload() = Buffer{stream_in().read(size)};
+                if (cur_window > size && stream_in().eof() && !fin_sent) {
+                    seg.header().fin = 1;
+                    fin_sent = true;
+                    ++size;
+                }
+                if (size == 0) break;
+                if (!timer.isRunning())
+                    timer.start(cur_rto);
+                seg.header().seqno = next_seqno();
+                _next_seqno += size;
+                cur_window -= size;
+                _segments_out.push(seg);
+                q.push(seg);
+            }
+       } else if (cur_window == 0) {
+            TCPSegment seg;
+            if (stream_in().eof()) {
+                seg.header().fin = 1;
+                fin_sent = true;
+                if (!timer.isRunning())
+                    timer.start(cur_rto);
+                seg.header().seqno = next_seqno();
+                _next_seqno += 1;
+                cur_window -= 1;
+                _segments_out.push(seg);
+                q.push(seg);
+            } else if (!stream_in().buffer_empty()) {
+                seg.payload() = Buffer{stream_in().read(1)};
+                if (!timer.isRunning())
+                    timer.start(cur_rto);
+                seg.header().seqno = next_seqno();
+                _next_seqno += 1;
+                cur_window -= 1;
+                _segments_out.push(seg);
+                q.push(seg);
+            }
+      }
+   }
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
 //! \param window_size The remote receiver's advertised window size
 void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_size) {
-    uint16_t old_win = win;
-    win = window_size;
+    // uint16_t old_win = win;
+    // win = window_size;
     uint64_t abs_idx = unwrap(ackno, _isn, _ackno);
     bool poped = false;
-    if (abs_idx > _next_seqno) {
-        // cur_window = win == 0 ? ???? waiting to be done 
-        // what should be done if impossible ackno occurred and win inc???
-        return;
-    }
-    if (abs_idx <= _ackno)
-        goto no_ack_but_bigger_win;
+    if (q.empty()) {
+        if (abs_idx > _next_seqno) {
+            return;
+        }
+    } else {
+        if (abs_idx > _next_seqno) return;
+        if (abs_idx < unwrap(q.front().header().seqno, _isn, _ackno)) return;
+    } 
+    win = window_size;
+    cur_window = win;
+       //goto no_ack_but_bigger_win;
     while (!q.empty()) {
         uint64_t target = q.front().length_in_sequence_space() + unwrap(q.front().header().seqno, _isn, _ackno);
         if (abs_idx >= target) {
@@ -94,21 +129,26 @@ void TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     }
     if (poped) {
         cur_rto = _initial_retransmission_timeout;
-        consec = 0;
-        if (!q.empty()) {
-            timer.start(cur_rto);
-        } else {
+        if (bytes_in_flight() == 0)
             timer.stop();
-        }
-        cur_window = win == 0 ? 1 : win;
-        fill_window();
-        return;
-    }
-no_ack_but_bigger_win:
+        else
+            timer.start(cur_rto);
+        consec = 0;
+    } 
+
+    if (!q.empty())
+        cur_window = abs_idx + win - unwrap(q.front().header().seqno, _isn, _ackno) - bytes_in_flight();
+    /*
+    else if (win == 0)
+        cur_window = 1;
+        */
+   fill_window();
+/*
     if (win > old_win) {
         cur_window += win - old_win;
         fill_window();
     }
+    */
 }
 
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
