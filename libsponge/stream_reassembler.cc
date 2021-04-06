@@ -23,7 +23,8 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
         eof_occurred = true;
     }
     size_t idx = index, remains = max - _output.buffer_size();
-    string str = data;
+    if (index >= ackno + remains) return;
+    string str = move(data);
     if (idx < ackno && idx + str.length() > ackno) {
         str = str.substr(ackno - idx, idx + str.length() - ackno);
         idx = ackno;

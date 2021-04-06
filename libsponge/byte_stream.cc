@@ -18,11 +18,13 @@ size_t ByteStream::write(const string &data) {
     size_t remains = max - size, prev = size;
     if (remains >= data.length()) {
         size_writed += data.length();
-        s.append(data);
+        for (char c : data)
+            q.push_back(c);
         size += data.length();
     } else {
         size_writed += remains;
-        s.append(data.begin(), data.begin() + remains);
+        for (size_t i = 0; i < remains; ++i)
+            q.push_back(data[i]);
         size = max;
     }
     return size - prev;
@@ -30,23 +32,28 @@ size_t ByteStream::write(const string &data) {
 
 //! \param[in] len bytes will be copied from the output side of the buffer
 string ByteStream::peek_output(const size_t len) const {
-    string cur(s.begin(), s.begin() + (len <= size ? len : size));
+    string cur;
+    size_t s = len <= size ? len : size;
+    for (size_t i = 0; i < s; ++i)
+        cur += q[i];
     return cur;
 }
 
 //! \param[in] len bytes will be removed from the output side of the buffer
 void ByteStream::pop_output(const size_t len) {
-    string str = peek_output(len);
-    size_read += str.length();
-    size -= str.length();
-    s.erase(0, str.length());
+    size_t k = len <= size ? len : size;
+    size_read += k;
+    size -= k;
+    for (size_t i = 0; i < k; ++i) {
+        q.pop_front();
+    }
 }
 
 //! Read (i.e., copy and then pop) the next "len" bytes of the stream
 //! \param[in] len bytes will be popped and returned
 //! \returns a string
 std::string ByteStream::read(const size_t len) {
-    string str = peek_output(len);
+    string str = move(peek_output(len));
     pop_output(len);
     return str;
 }

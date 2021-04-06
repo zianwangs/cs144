@@ -2,7 +2,7 @@
 #define SPONGE_LIBSPONGE_BYTE_STREAM_HH
 
 #include <string>
-
+#include <deque>
 //! \brief An in-order byte stream.
 
 //! Bytes are written on the "input" side and read from the "output"
@@ -23,7 +23,7 @@ class ByteStream {
     size_t size_read = 0;
     size_t size_writed = 0;
     size_t max;
-    std::string s{};
+    std::deque<char> q{};
   public:
     //! Construct a stream with room for `capacity` bytes.
     ByteStream(const size_t capacity);

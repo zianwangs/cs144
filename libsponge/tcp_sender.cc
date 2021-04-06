@@ -50,7 +50,7 @@ void TCPSender::fill_window() {
         seg.header().fin = 1;
         fin_sent = true;
     } else {
-        string payload = stream_in().read(mymin(cur_window, 1452));
+        string payload = move(stream_in().read(mymin(cur_window, 1452)));
         seg.payload() = Buffer(move(payload));
         if (cur_window > seg.length_in_sequence_space() && stream_in().eof()) {
             seg.header().fin = 1;

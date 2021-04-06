@@ -35,6 +35,9 @@ class TCPConnection {
 
     const ByteStream &inbound_stream() const { return _receiver.stream_out(); }
     void close();
+    void popAll();
+    void fill_and_popAll();
+    void unclean_shutdown();
   public:
     //! \name "Input" interface for the writer
     //!@{

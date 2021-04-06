@@ -19,8 +19,15 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
         isn = header.seqno;
     }
     if (!syn_received) return;
+    /*
+    if (seg.header().seqno - ackno().value() >= static_cast<int>(window_size())) {
+        return;
+    }
+    */
+   
     size_t checkpoint = unwrap(ackno().value(), isn, stream_out().bytes_written());
     size_t start_abs_idx = unwrap(header.seqno, isn, checkpoint);
+    // if (checkpoint + window_size() <= start_abs_idx) return;
     if (checkpoint >= start_abs_idx + len) return;
     size_t start_stream_idx = start_abs_idx;
     if (!header.syn && syn_received) {
@@ -28,7 +35,7 @@ void TCPReceiver::segment_received(const TCPSegment &seg) {
     }
     if (header.fin)
         fin_received = true;
-    _reassembler.push_substring(payload.copy(), start_stream_idx, header.fin);
+    _reassembler.push_substring(move(payload.copy()), start_stream_idx, header.fin);
 
 }
 
